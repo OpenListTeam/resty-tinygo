@@ -1,3 +1,5 @@
+//go:build !tinygo
+
 // Copyright (c) 2015-present Jeevanandam M (jeeva@myjeeva.com), All rights reserved.
 // resty source code and usage is governed by a MIT style
 // license that can be found in the LICENSE file.
@@ -10,13 +12,13 @@ import (
 	"math"
 	"net"
 	"net/http"
-	"net/http/cookiejar"
 	"net/url"
 	"runtime"
 	"sync"
 	"time"
 
-	"golang.org/x/net/publicsuffix"
+	"resty.dev/v3/cookiejar"
+	"resty.dev/v3/publicsuffix"
 )
 
 // Version # of resty

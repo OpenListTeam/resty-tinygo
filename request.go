@@ -1724,7 +1724,7 @@ func (r *Request) sendLoadBalancerFeedback(res *Response, err error) {
 	// that server which may fail
 	if err != nil {
 		var noe *net.OpError
-		if errors.As(err, &noe) {
+		if ErrorsAs(err, &noe) {
 			success = !errors.Is(noe.Err, syscall.ECONNREFUSED) || noe.Timeout()
 		}
 	}

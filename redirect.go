@@ -45,7 +45,7 @@ func (f RedirectPolicyFunc) Apply(req *http.Request, via []*http.Request) error 
 //	resty.SetRedirectPolicy(resty.NoRedirectPolicy())
 func NoRedirectPolicy() RedirectPolicy {
 	return RedirectPolicyFunc(func(req *http.Request, via []*http.Request) error {
-		return http.ErrUseLastResponse
+		return ErrUseLastResponse
 	})
 }
 

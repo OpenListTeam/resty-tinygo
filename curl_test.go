@@ -10,9 +10,10 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"net/http/cookiejar"
 	"strings"
 	"testing"
+
+	"resty.dev/v3/cookiejar"
 )
 
 func TestCurlGenerateUnexecutedRequest(t *testing.T) {

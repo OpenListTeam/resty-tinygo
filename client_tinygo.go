@@ -1,4 +1,4 @@
-//go:build !tinygo
+//go:build tinygo
 
 // Copyright (c) 2015-present Jeevanandam M (jeeva@myjeeva.com), All rights reserved.
 // resty source code and usage is governed by a MIT style
@@ -11,13 +11,11 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"errors"
 	"io"
 	"maps"
 	"net/http"
 	"net/url"
-	"os"
 	"reflect"
 	"slices"
 	"strings"
@@ -369,6 +367,9 @@ func (c *Client) SetCookieJar(jar http.CookieJar) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.httpClient.Jar = jar
+	if tr, ok := c.httpClient.Transport.(*AdvancedTransport); ok {
+		tr.Jar = jar
+	}
 	return c
 }
 
@@ -1216,13 +1217,15 @@ func (c *Client) newErrorInterface() any {
 func (c *Client) SetRedirectPolicy(policies ...RedirectPolicy) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	c.httpClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		for _, p := range policies {
-			if err := p.Apply(req, via); err != nil {
-				return err
+	if advTransport, ok := c.httpClient.Transport.(*AdvancedTransport); ok {
+		advTransport.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+			for _, p := range policies {
+				if err := p.Apply(req, via); err != nil {
+					return err
+				}
 			}
+			return nil
 		}
-		return nil // looks good, go ahead
 	}
 	return c
 }
@@ -1414,11 +1417,8 @@ func (c *Client) AddRetryHooks(hooks ...RetryHookFunc) *Client {
 // TLSClientConfig method returns the [tls.Config] from underlying client transport
 // otherwise returns nil
 func (c *Client) TLSClientConfig() *tls.Config {
-	cfg, err := c.tlsConfig()
-	if err != nil {
-		c.Logger().Errorf("%v", err)
-	}
-	return cfg
+	c.Logger().Warnf("TLSClientConfig is not supported in TinyGo")
+	return nil
 }
 
 // SetTLSClientConfig method sets TLSClientConfig for underlying client Transport.
@@ -1432,25 +1432,7 @@ func (c *Client) TLSClientConfig() *tls.Config {
 //
 // NOTE: This method overwrites existing [http.Transport.TLSClientConfig]
 func (c *Client) SetTLSClientConfig(tlsConfig *tls.Config) *Client {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
-	// TLSClientConfiger interface handling
-	if tc, ok := c.httpClient.Transport.(TLSClientConfiger); ok {
-		if err := tc.SetTLSClientConfig(tlsConfig); err != nil {
-			c.log.Errorf("%v", err)
-		}
-		return c
-	}
-
-	// default standard transport handling
-	transport, ok := c.httpClient.Transport.(*http.Transport)
-	if !ok {
-		c.log.Errorf("SetTLSClientConfig: %v", ErrNotHttpTransportType)
-		return c
-	}
-	transport.TLSClientConfig = tlsConfig
-
+	c.Logger().Warnf("SetTLSClientConfig is not supported in TinyGo")
 	return c
 }
 
@@ -1471,22 +1453,7 @@ func (c *Client) ProxyURL() *url.URL {
 //
 // OR you could also set Proxy via environment variable, refer to [http.ProxyFromEnvironment]
 func (c *Client) SetProxy(proxyURL string) *Client {
-	transport, err := c.HTTPTransport()
-	if err != nil {
-		c.Logger().Errorf("%v", err)
-		return c
-	}
-
-	pURL, err := url.Parse(proxyURL)
-	if err != nil {
-		c.Logger().Errorf("%v", err)
-		return c
-	}
-
-	c.lock.Lock()
-	c.proxyURL = pURL
-	transport.Proxy = http.ProxyURL(c.proxyURL)
-	c.lock.Unlock()
+	c.Logger().Warnf("SetProxy is not supported in TinyGo")
 	return c
 }
 
@@ -1494,16 +1461,7 @@ func (c *Client) SetProxy(proxyURL string) *Client {
 //
 //	client.RemoveProxy()
 func (c *Client) RemoveProxy() *Client {
-	transport, err := c.HTTPTransport()
-	if err != nil {
-		c.Logger().Errorf("%v", err)
-		return c
-	}
-
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.proxyURL = nil
-	transport.Proxy = nil
+	c.Logger().Warnf("RemoveProxy is not supported in TinyGo")
 	return c
 }
 
@@ -1512,12 +1470,7 @@ func (c *Client) RemoveProxy() *Client {
 //
 //	client.SetCertificateFromFile("certs/client.pem", "certs/client.key")
 func (c *Client) SetCertificateFromFile(certFilePath, certKeyFilePath string) *Client {
-	cert, err := tls.LoadX509KeyPair(certFilePath, certKeyFilePath)
-	if err != nil {
-		c.Logger().Errorf("client certificate/key parsing error: %v", err)
-		return c
-	}
-	c.SetCertificates(cert)
+	c.Logger().Warnf("SetCertificateFromFile is not supported in TinyGo")
 	return c
 }
 
@@ -1534,12 +1487,7 @@ func (c *Client) SetCertificateFromFile(certFilePath, certKeyFilePath string) *C
 //
 //	client.SetCertificateFromString(myClientCertStr, myClientCertKeyStr)
 func (c *Client) SetCertificateFromString(certStr, certKeyStr string) *Client {
-	cert, err := tls.X509KeyPair([]byte(certStr), []byte(certKeyStr))
-	if err != nil {
-		c.Logger().Errorf("client certificate/key parsing error: %v", err)
-		return c
-	}
-	c.SetCertificates(cert)
+	c.Logger().Warnf("SetCertificateFromString is not supported in TinyGo")
 	return c
 }
 
@@ -1554,15 +1502,7 @@ func (c *Client) SetCertificateFromString(certStr, certKeyStr string) *Client {
 //
 //	client.SetCertificates(cert)
 func (c *Client) SetCertificates(certs ...tls.Certificate) *Client {
-	config, err := c.tlsConfig()
-	if err != nil {
-		c.Logger().Errorf("%v", err)
-		return c
-	}
-
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	config.Certificates = append(config.Certificates, certs...)
+	c.Logger().Warnf("SetCertificates is not supported in TinyGo")
 	return c
 }
 
@@ -1582,14 +1522,7 @@ func (c *Client) SetCertificates(certs ...tls.Certificate) *Client {
 //	// if you happen to have string slices
 //	client.SetRootCertificates(certs...)
 func (c *Client) SetRootCertificates(pemFilePaths ...string) *Client {
-	for _, fp := range pemFilePaths {
-		rootPemData, err := os.ReadFile(fp)
-		if err != nil {
-			c.Logger().Errorf("%v", err)
-			return c
-		}
-		c.handleCAs("root", rootPemData)
-	}
+	c.Logger().Warnf("SetRootCertificates is not supported in TinyGo")
 	return c
 }
 
@@ -1603,10 +1536,7 @@ func (c *Client) SetRootCertificates(pemFilePaths ...string) *Client {
 //		"root-ca.pem",
 //	)
 func (c *Client) SetRootCertificatesWatcher(options *CertWatcherOptions, pemFilePaths ...string) *Client {
-	c.SetRootCertificates(pemFilePaths...)
-	for _, fp := range pemFilePaths {
-		c.initCertWatcher(fp, "root", options)
-	}
+	c.Logger().Warnf("SetRootCertificatesWatcher is not supported in TinyGo")
 	return c
 }
 
@@ -1619,7 +1549,7 @@ func (c *Client) SetRootCertificatesWatcher(options *CertWatcherOptions, pemFile
 //
 //	client.SetRootCertificateFromString(myRootCertStr)
 func (c *Client) SetRootCertificateFromString(pemCerts string) *Client {
-	c.handleCAs("root", []byte(pemCerts))
+	c.Logger().Warnf("SetRootCertificateFromString is not supported in TinyGo")
 	return c
 }
 
@@ -1639,14 +1569,7 @@ func (c *Client) SetRootCertificateFromString(pemCerts string) *Client {
 //	// if you happen to have string slices
 //	client.SetClientRootCertificates(certs...)
 func (c *Client) SetClientRootCertificates(pemFilePaths ...string) *Client {
-	for _, fp := range pemFilePaths {
-		pemData, err := os.ReadFile(fp)
-		if err != nil {
-			c.Logger().Errorf("%v", err)
-			return c
-		}
-		c.handleCAs("client-root", pemData)
-	}
+	c.Logger().Warnf("SetClientRootCertificates is not supported in TinyGo")
 	return c
 }
 
@@ -1660,10 +1583,7 @@ func (c *Client) SetClientRootCertificates(pemFilePaths ...string) *Client {
 //		"client-root-ca.pem",
 //	)
 func (c *Client) SetClientRootCertificatesWatcher(options *CertWatcherOptions, pemFilePaths ...string) *Client {
-	c.SetClientRootCertificates(pemFilePaths...)
-	for _, fp := range pemFilePaths {
-		c.initCertWatcher(fp, "client-root", options)
-	}
+	c.Logger().Warnf("SetClientRootCertificatesWatcher is not supported in TinyGo")
 	return c
 }
 
@@ -1676,85 +1596,8 @@ func (c *Client) SetClientRootCertificatesWatcher(options *CertWatcherOptions, p
 //
 //	client.SetClientRootCertificateFromString(myClientRootCertStr)
 func (c *Client) SetClientRootCertificateFromString(pemCerts string) *Client {
-	c.handleCAs("client-root", []byte(pemCerts))
+	c.Logger().Warnf("SetClientRootCertificateFromString is not supported in TinyGo")
 	return c
-}
-
-func (c *Client) handleCAs(scope string, permCerts []byte) {
-	config, err := c.tlsConfig()
-	if err != nil {
-		c.Logger().Errorf("%v", err)
-		return
-	}
-
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	switch scope {
-	case "root":
-		if config.RootCAs == nil {
-			config.RootCAs = x509.NewCertPool()
-		}
-		config.RootCAs.AppendCertsFromPEM(permCerts)
-	case "client-root":
-		if config.ClientCAs == nil {
-			config.ClientCAs = x509.NewCertPool()
-		}
-		config.ClientCAs.AppendCertsFromPEM(permCerts)
-	}
-}
-
-func (c *Client) initCertWatcher(pemFilePath, scope string, options *CertWatcherOptions) {
-	tickerDuration := defaultWatcherPoolingInterval
-	if options != nil && options.PoolInterval > 0 {
-		tickerDuration = options.PoolInterval
-	}
-
-	go func() {
-		ticker := time.NewTicker(tickerDuration)
-		st, err := os.Stat(pemFilePath)
-		if err != nil {
-			c.Logger().Errorf("%v", err)
-			return
-		}
-
-		modTime := st.ModTime().UTC()
-
-		for {
-			select {
-			case <-c.certWatcherStopChan:
-				ticker.Stop()
-				return
-			case <-ticker.C:
-
-				c.debugf("Checking if cert %s has changed...", pemFilePath)
-
-				st, err = os.Stat(pemFilePath)
-				if err != nil {
-					c.Logger().Errorf("%v", err)
-					continue
-				}
-				newModTime := st.ModTime().UTC()
-
-				if modTime.Equal(newModTime) {
-					c.debugf("Cert %s hasn't changed.", pemFilePath)
-					continue
-				}
-
-				modTime = newModTime
-
-				c.debugf("Reloading cert %s ...", pemFilePath)
-
-				switch scope {
-				case "root":
-					c.SetRootCertificates(pemFilePath)
-				case "client-root":
-					c.SetClientRootCertificates(pemFilePath)
-				}
-
-				c.debugf("Cert %s reloaded.", pemFilePath)
-			}
-		}
-	}()
 }
 
 // OutputDirectory method returns the output directory value from the client.
@@ -1818,6 +1661,9 @@ func (c *Client) HTTPTransport() (*http.Transport, error) {
 func (c *Client) Transport() http.RoundTripper {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
+	if tr, ok := c.httpClient.Transport.(*AdvancedTransport); ok {
+		return tr.Transport
+	}
 	return c.httpClient.Transport
 }
 
@@ -1841,7 +1687,11 @@ func (c *Client) SetTransport(transport http.RoundTripper) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if transport != nil {
-		c.httpClient.Transport = transport
+		if tr, ok := c.httpClient.Transport.(*AdvancedTransport); ok {
+			tr.Transport = transport
+		} else {
+			c.httpClient.Transport = transport
+		}
 	}
 	return c
 }
@@ -2298,26 +2148,6 @@ func (c *Client) execute(req *Request) (*Response, error) {
 
 	err = response.Err
 	return response, err
-}
-
-// getting TLS client config if not exists then create one
-func (c *Client) tlsConfig() (*tls.Config, error) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
-	if tc, ok := c.httpClient.Transport.(TLSClientConfiger); ok {
-		return tc.TLSClientConfig(), nil
-	}
-
-	transport, ok := c.httpClient.Transport.(*http.Transport)
-	if !ok {
-		return nil, ErrNotHttpTransportType
-	}
-
-	if transport.TLSClientConfig == nil {
-		transport.TLSClientConfig = &tls.Config{}
-	}
-	return transport.TLSClientConfig, nil
 }
 
 // just an internal helper method

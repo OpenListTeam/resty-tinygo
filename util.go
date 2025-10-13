@@ -421,3 +421,59 @@ func readMachineID() []byte {
 	// This panic would happen at program startup, so no worries at runtime panic.
 	panic(errors.New("resty - guid: unable to get hostname and random bytes"))
 }
+
+// as 是 errors.As 核心逻辑的一个存根(stub)，你需要确保你的项目中包含了完整的实现。
+// 它的作用是遍历错误链 (error chain)，找到匹配目标类型的错误。
+func as(err error, target any) bool {
+	if err == nil {
+		return false
+	}
+	val := reflect.ValueOf(target).Elem()
+	for {
+		if reflect.TypeOf(err).AssignableTo(val.Type()) {
+			val.Set(reflect.ValueOf(err))
+			return true
+		}
+		if x, ok := err.(interface{ Unwrap() error }); ok {
+			err = x.Unwrap()
+			if err == nil {
+				return false
+			}
+		} else {
+			return false
+		}
+	}
+}
+
+// ErrorsAs 是标准库 errors.As 的兼容性实现，用于 TinyGo 等环境。
+// 它避免了调用 TinyGo 的 reflectlite 包中未实现的 Implements 方法，
+// 转而通过手动检查方法签名来判断一个类型是否实现了 error 接口。
+func ErrorsAs(err error, target any) bool {
+	if err == nil {
+		return false
+	}
+	if target == nil {
+		panic("errors: target cannot be nil")
+	}
+
+	// 使用 "reflectlite"
+	val := reflect.ValueOf(target)
+	typ := val.Type()
+
+	if typ.Kind() != reflect.Ptr || val.IsNil() {
+		panic("errors: target must be a non-nil pointer")
+	}
+
+	targetType := typ.Elem()
+
+	// 改为使用“反射创建实例 + 类型断言”的方式来检查接口实现
+	if targetType.Kind() != reflect.Interface {
+		prototype := reflect.New(targetType.Elem()).Interface()
+		if _, ok := prototype.(error); !ok {
+			panic("errors: *target must be interface or implement error")
+		}
+	}
+
+	// 调用 `as` 的核心解包逻辑
+	return as(err, target)
+}
